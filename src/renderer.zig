@@ -1,26 +1,40 @@
 const std = @import("std");
 const PixelBuffer = @import("pixel_buffer.zig").PixelBuffer;
 
-//TODO: should probably remove this later on.
-// So i don't scatter raylib all over the code base.
 const rl = @import("raylib");
 const rgui = @import("raygui");
+const Color = @import("color.zig").Color;
+
+const Vector = @import("vector.zig");
+const Vector3 = @import("vector.zig").Vector3;
+const Vector2 = @import("vector.zig").Vector2;
+
+const Face = @import("triangl.zig").Face;
+const Triangle = @import("triangl.zig").Triangle;
+const Mesh = @import("mesh.zig");
+
+const fov_factor: f32 = 640;
+const camera_position: Vector3 = .{ .x = 0, .y = 0, .z = -7 };
+var cube_rotation: Vector3 = .{ .x = 0, .y = 0, .z = 0 };
 
 pub const Renderer = struct {
-    width: usize,
-    height: usize,
+    width: u16,
+    height: u16,
     buffer: PixelBuffer,
 
     render_diag: bool = false,
     render_gui: bool = false,
-
     showMessageBox: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, width: usize, height: usize) !Renderer {
+    triangles_to_render: []Triangle,
+
+    pub fn init(allocator: std.mem.Allocator, width: u16, height: u16) !Renderer {
         const buffer = try PixelBuffer.init(allocator, width, height);
+        const triangles = try allocator.alloc(Triangle, 12);
 
         return .{
             .buffer = buffer,
+            .triangles_to_render = triangles,
             .width = width,
             .height = height,
         };
@@ -42,26 +56,65 @@ pub const Renderer = struct {
         self.render_gui = !self.render_gui;
     }
 
+    fn project(point: Vector3) Vector2 {
+        const x: f32 = (point.x * fov_factor) / point.z;
+        const y: f32 = (point.y * fov_factor) / point.z;
+
+        return .{ .x = x, .y = y };
+    }
+
     // TODO: Add list of render object later
     pub fn render(self: *Renderer) void {
-        var pixels = self.buffer.pixels;
+        self.buffer.clearBuffer(Color.sky_blue);
 
-        // Compute checkerboard.
-        const width = self.width;
-        const height = self.height;
+        const delta_time = rl.getFrameTime();
+        cube_rotation.y += 0.5 * delta_time;
+        cube_rotation.x += 0.5 * delta_time;
+        cube_rotation.z += 0.5 * delta_time;
 
-        for (0..height) |y| {
-            for (0..width) |x| {
-                if (((x / 32 + y / 32) / 1) % 2 == 0) {
-                    pixels[y * width + x] = rl.Color.light_gray;
-                } else {
-                    pixels[y * width + x] = rl.Color.dark_gray;
-                }
+        // Render vectors with perspective projection
+        for (Mesh.mesh_faces, 0..) |face, i| {
+            const face_vertices = [3]Vector3{
+                Mesh.mesh_vertices[face.a - 1],
+                Mesh.mesh_vertices[face.b - 1],
+                Mesh.mesh_vertices[face.c - 1],
+            };
+
+            var triangle: Triangle = undefined;
+
+            for (face_vertices, 0..) |point, j| {
+                var point3D = point;
+
+                point3D = Vector.vec3RotateX(point3D, cube_rotation.x);
+                point3D = Vector.vec3RotateY(point3D, cube_rotation.y);
+                point3D = Vector.vec3RotateZ(point3D, cube_rotation.z);
+
+                point3D.z -= camera_position.z;
+
+                var projected_point = project(point3D);
+                projected_point.x += @floatFromInt(@divTrunc(self.width, 2));
+                projected_point.y += @floatFromInt(@divTrunc(self.height, 2));
+
+                triangle.points[j] = projected_point;
             }
+
+            self.triangles_to_render[i] = triangle;
+        }
+
+        for (self.triangles_to_render) |triangle| {
+            self.buffer.drawTriangle(
+                @intFromFloat(triangle.points[0].x),
+                @intFromFloat(triangle.points[0].y),
+                @intFromFloat(triangle.points[1].x),
+                @intFromFloat(triangle.points[1].y),
+                @intFromFloat(triangle.points[2].x),
+                @intFromFloat(triangle.points[2].y),
+                Color.black,
+            );
         }
 
         rl.beginDrawing();
-        rl.clearBackground(rl.Color.dark_gray);
+        rl.clearBackground(rl.Color.sky_blue);
 
         self.buffer.render();
 

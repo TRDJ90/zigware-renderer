@@ -11,12 +11,12 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const screenWidth = 1280;
-    const screenHeight = 720;
+    const screenWidth: u16 = 800;
+    const screenHeight: u16 = 600;
 
     _ = try window.init(screenWidth, screenHeight, "Test");
     defer window.deinit();
-    window.setTargetFPS(60);
+    //window.setTargetFPS(60);
 
     var renderer = try Renderer.init(allocator, screenWidth, screenHeight);
     renderer.renderDiagnostics(true);
