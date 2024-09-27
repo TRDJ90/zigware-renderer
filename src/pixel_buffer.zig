@@ -39,9 +39,9 @@ pub const PixelBuffer = struct {
         for (0..height) |y| {
             for (0..width) |x| {
                 if (((x / size + y / size) / 1) % 2 == 0) {
-                    self.pixels[y * width + x] = color_a; //Color.light_gray;
+                    self.pixels[y * width + x] = color_a;
                 } else {
-                    self.pixels[y * width + x] = color_b; //Color.dark_gray;
+                    self.pixels[y * width + x] = color_b;
                 }
             }
         }
@@ -113,7 +113,7 @@ pub const PixelBuffer = struct {
     }
 
     pub fn render(self: *PixelBuffer) void {
-        // update and render pixel buffer.
+        // update and render pixel buffer with Ray lib.
         rl.updateTexture(self.texture, self.pixels.ptr);
         rl.drawTexture(self.texture, 0, 0, rl.Color.white);
     }
