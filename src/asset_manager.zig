@@ -1,6 +1,6 @@
 const std = @import("std");
 const Vector3 = @import("vector.zig").Vector3;
-const Face = @import("triangl.zig").Face;
+const Face = @import("triangle.zig").Face;
 const Mesh = @import("mesh.zig").Mesh;
 
 pub const AssetManager = struct {
@@ -23,9 +23,9 @@ pub const AssetManager = struct {
         self.arena.deinit();
     }
 
-    pub fn loadObj(self: *AssetManager) !Mesh {
+    pub fn loadObj(self: *AssetManager, path: []const u8) !Mesh {
         var path_buffer: [std.fs.max_path_bytes:0]u8 = undefined;
-        _ = try std.fs.realpath("./assets/f22.obj", &path_buffer);
+        _ = try std.fs.realpath(path, &path_buffer);
 
         var file = try std.fs.openFileAbsoluteZ(&path_buffer, .{ .mode = .read_only });
         defer file.close();

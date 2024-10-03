@@ -4,14 +4,17 @@ default:
 prepare:
     zigup 0.14.0-dev.1646+b19d0fb0
 
-build: 
+debug: 
     zig build
 
-debug:
+run:
     zig build -Doptimize=Debug run
 
-run:
-    zig build -Doptimize=ReleaseFast run
+release:
+    zig build -Doptimize=ReleaseSafe run
+
+package: 
+    zig build -Doptimize=ReleaseSafe
 
 test: 
     zig build test
