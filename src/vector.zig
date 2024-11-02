@@ -142,6 +142,10 @@ pub fn dotVec3(a: *const Vector3, b: *const Vector3) f32 {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 }
 
+pub fn dotVec3FromVec4(a: *const Vector4, b: *const Vector4) f32 {
+    return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+}
+
 pub fn normalizeVec3(self: *Vector3) void {
     const length: f32 = math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z);
     self.x /= length;

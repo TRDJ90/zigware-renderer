@@ -96,7 +96,7 @@ pub fn mat4MulVec4(matrix: *const Matrix4x4, vector: *const Vector4) Vector4 {
     return v;
 }
 
-pub fn mat4MulMat4(a: Matrix4x4, b: Matrix4x4) Matrix4x4 {
+pub fn mat4MulMat4(a: *const Matrix4x4, b: *const Matrix4x4) Matrix4x4 {
     var result: Matrix4x4 = undefined;
 
     for (0..4) |i| {
@@ -111,14 +111,32 @@ pub fn mat4MulMat4(a: Matrix4x4, b: Matrix4x4) Matrix4x4 {
     return result;
 }
 
-pub fn makePerspectiveMat4(fov: f32, aspect: f32, znear: f32, zfar: f32) Matrix4x4 {
+pub fn makePerspectiveMat4(fov: f32, aspect: f32, z_near: f32, z_far: f32) Matrix4x4 {
+    const tan_half_fov = tan(fov / 2);
+    const z_range = z_near - z_far;
+
     var matrix: Matrix4x4 = undefined;
 
-    matrix.values[0][0] = aspect * (1.0 / tan(fov / 2.0));
-    matrix.values[1][1] = 1.0 / tan(fov / 2.0);
-    matrix.values[2][2] = zfar / (zfar - znear);
-    matrix.values[2][3] = (-zfar * znear) / (zfar - znear);
+    matrix.values[0][0] = 1.0 / (tan_half_fov * aspect);
+    matrix.values[1][1] = 1.0 / tan_half_fov;
+    matrix.values[2][2] = (-z_near - z_far) / z_range;
+    matrix.values[2][3] = 2 * z_far * z_near / z_range;
     matrix.values[3][2] = 1.0;
+
+    return matrix;
+}
+
+pub fn makeScreenspaceTransform(half_width: f32, half_height: f32) Matrix4x4 {
+    var matrix: Matrix4x4 = undefined;
+
+    matrix.values[0][0] = half_width;
+    matrix.values[0][3] = half_width - 0.5;
+
+    matrix.values[1][1] = -half_height;
+    matrix.values[1][3] = half_height - 0.5;
+
+    matrix.values[2][2] = 1.0;
+    matrix.values[3][3] = 1.0;
 
     return matrix;
 }
