@@ -13,6 +13,7 @@ const Triangle = @import("triangle.zig");
 const Clipping = @import("clipping.zig");
 const Mesh = @import("mesh.zig");
 const Model = @import("model.zig");
+// const RenderMode = @import("render_mode.zig");
 
 const Vector = @import("vector.zig");
 const Matrix = @import("matrix.zig");
@@ -21,12 +22,19 @@ const Vector3 = Vector.Vector3;
 const Vector4 = Vector.Vector4;
 const Matrix4x4 = Matrix.Matrix4x4;
 
+pub const RenderMode = enum {
+    rasterized,
+    wire_frame,
+    points,
+};
+
 width: u16,
 height: u16,
 display: Display,
 rasterizer: Rasterizer,
 triangle_list: std.ArrayList(Triangle),
 proj_mat: Matrix4x4,
+render_mode: RenderMode,
 
 pub fn init(allocator: std.mem.Allocator, width: u16, height: u16) !Renderer {
     var display = try Display.init(allocator, width, height);
@@ -46,7 +54,12 @@ pub fn init(allocator: std.mem.Allocator, width: u16, height: u16) !Renderer {
         .proj_mat = proj_mat,
         .width = width,
         .height = height,
+        .render_mode = RenderMode.rasterized,
     };
+}
+
+pub fn setRenderMode(self: *Renderer, mode: RenderMode) void {
+    self.render_mode = mode;
 }
 
 pub fn render(
@@ -54,23 +67,20 @@ pub fn render(
     camera: *Camera,
     models: *std.ArrayList(Model),
 ) !void {
-    rl.beginDrawing();
-    rl.clearBackground(rl.Color.sky_blue);
-
     const delta_time = rl.getFrameTime();
 
     for (models.items) |*model| {
-        var mesh = model.mesh;
-        mesh.rotation.y += 0.5 * delta_time;
-        mesh.rotation.x += 0.5 * delta_time;
-        mesh.rotation.z += 0.5 * delta_time;
-        mesh.translation.z = 0.0;
+        var mesh_ptr = &model.mesh;
+        mesh_ptr.rotation.y += 0.5 * delta_time;
+        //mesh_ptr.rotation.x += 0.5 * delta_time;
+        //mesh_ptr.rotation.z += 0.5 * delta_time;
+        mesh_ptr.translation.z = 3.0;
 
-        const scale_mat: Matrix4x4 = Matrix.scaleMat4x4(mesh.scale.x, mesh.scale.y, mesh.scale.z);
-        const translation_mat: Matrix4x4 = Matrix.translateMat4x4(mesh.translation.x, mesh.translation.y, mesh.translation.z);
-        const rotation_mat_x: Matrix4x4 = Matrix.rotationMat4x4X(mesh.rotation.x);
-        const rotation_mat_y: Matrix4x4 = Matrix.rotationMat4x4Y(mesh.rotation.y);
-        const rotation_mat_z: Matrix4x4 = Matrix.rotationMat4x4Z(mesh.rotation.z);
+        const scale_mat: Matrix4x4 = Matrix.scaleMat4x4(mesh_ptr.scale.x, mesh_ptr.scale.y, mesh_ptr.scale.z);
+        const translation_mat: Matrix4x4 = Matrix.translateMat4x4(mesh_ptr.translation.x, mesh_ptr.translation.y, mesh_ptr.translation.z);
+        const rotation_mat_x: Matrix4x4 = Matrix.rotationMat4x4X(mesh_ptr.rotation.x);
+        const rotation_mat_y: Matrix4x4 = Matrix.rotationMat4x4Y(mesh_ptr.rotation.y);
+        const rotation_mat_z: Matrix4x4 = Matrix.rotationMat4x4Z(mesh_ptr.rotation.z);
 
         const view_matrix: Matrix4x4 = camera.lookAtMatrix();
 
@@ -88,66 +98,91 @@ pub fn render(
 
         // Note: Process model's triangles.
         var vertex_index: usize = 0;
-        while (vertex_index < mesh.vertices.items.len - 2) : (vertex_index += 3) {
-            const vertex_a: Vertex = mesh.vertices.items[vertex_index];
-            const vertex_b: Vertex = mesh.vertices.items[vertex_index + 1];
-            const vertex_c: Vertex = mesh.vertices.items[vertex_index + 2];
-
-            var triangle: Triangle = Triangle.init(vertex_a, vertex_b, vertex_c);
+        while (vertex_index < mesh_ptr.vertices.items.len - 2) : (vertex_index += 3) {
+            var triangle = [3]Vector4{
+                mesh_ptr.vertices.items[vertex_index].position,
+                mesh_ptr.vertices.items[vertex_index + 1].position,
+                mesh_ptr.vertices.items[vertex_index + 2].position,
+            };
 
             // Go from model to world space
-            for (0..triangle.vertices.len) |i| {
-                var world_view_position: Vector4 = triangle.vertices[i].position;
+            for (0..triangle.len) |i| {
+                var world_view_position: Vector4 = triangle[i];
 
                 world_view_position = Matrix.mat4MulVec4(&world_matrix, &world_view_position);
                 world_view_position = Matrix.mat4MulVec4(&view_matrix, &world_view_position);
 
-                triangle.vertices[i].position = world_view_position;
+                triangle[i] = world_view_position;
             }
 
             // Do backface culling
-            if (backFaceCulling(&triangle)) {
+            if (backFaceCulling(&triangle[0], &triangle[1], &triangle[2])) {
                 continue;
             }
 
             // Go from world to ndc space
-            for (0..triangle.vertices.len) |i| {
-                var vertex_ptr = &triangle.vertices[i];
-                vertex_ptr.*.position = Matrix.mat4MulVec4(&self.proj_mat, &vertex_ptr.position);
-                vertex_ptr.*.position = Matrix.mat4MulVec4(&screenspace_matrix, &vertex_ptr.position);
+            for (0..triangle.len) |i| {
+                var projected_point = triangle[i];
+                projected_point = Matrix.mat4MulVec4(&self.proj_mat, &projected_point);
+                projected_point = Matrix.mat4MulVec4(&screenspace_matrix, &projected_point);
 
                 // Do the perspective divide.
-                if (vertex_ptr.position.w != 0) {
-                    vertex_ptr.position.x /= vertex_ptr.position.w;
-                    vertex_ptr.position.y /= vertex_ptr.position.w;
-                    vertex_ptr.position.z /= vertex_ptr.position.w;
+                if (projected_point.w != 0) {
+                    projected_point.x /= projected_point.w;
+                    projected_point.y /= projected_point.w;
+                    projected_point.z /= projected_point.w;
                 }
+
+                triangle[i] = projected_point;
             }
 
-            try self.triangle_list.append(triangle);
+            var vertex_a = mesh_ptr.vertices.items[vertex_index];
+            var vertex_b = mesh_ptr.vertices.items[vertex_index + 1];
+            var vertex_c = mesh_ptr.vertices.items[vertex_index + 2];
+
+            vertex_a.position = triangle[0];
+            vertex_b.position = triangle[1];
+            vertex_c.position = triangle[2];
+
+            try self.triangle_list.append(Triangle.init(vertex_a, vertex_b, vertex_c));
         }
         // Render triangles
         for (self.triangle_list.items) |triangle| {
-            Rasterizer.drawTriangle(&self.display, &triangle, &models.items[0].texture);
+            switch (self.render_mode) {
+                RenderMode.rasterized => {
+                    Rasterizer.drawTriangle(&self.display, &triangle, &models.items[0].texture);
+                },
+                RenderMode.wire_frame => {
+                    Rasterizer.drawTriangleLines(&self.display, &triangle, Color.black);
+                },
+                RenderMode.points => {
+                    Rasterizer.drawTrianglePoints(&self.display, &triangle, Color.black);
+                },
+            }
+            // Rasterizer.drawTriangle(&self.display, &triangle, &models.items[0].texture);
             //Rasterizer.drawTriangleLines(&self.display, &triangle, Color.black);
         }
     }
 
     self.display.present();
+}
 
-    rl.drawFPS(10, 10);
-    rl.drawCircle(self.width / 2, self.height / 2, 3, rl.Color.black);
-    rl.endDrawing();
-
+pub fn beginDrawing(self: *Renderer) void {
+    rl.beginDrawing();
+    rl.clearBackground(rl.Color.sky_blue);
     self.display.clearColorBuffer(Color.light_gray);
     self.display.clearDepthBuffer();
+}
+
+pub fn endDrawing(self: *Renderer) void {
+    rl.endDrawing();
     self.triangle_list.clearRetainingCapacity();
 }
 
-fn backFaceCulling(triangle: *Triangle) bool {
-    const vector_1 = Vector.vec4ToVec3(&triangle.vertices[0].position);
-    const vector_2 = Vector.vec4ToVec3(&triangle.vertices[1].position);
-    const vector_3 = Vector.vec4ToVec3(&triangle.vertices[2].position);
+fn backFaceCulling(vector_a: *Vector4, vector_b: *Vector4, vector_c: *Vector4) bool {
+    const vector_1 = Vector.vec4ToVec3(vector_a);
+    const vector_2 = Vector.vec4ToVec3(vector_b);
+    const vector_3 = Vector.vec4ToVec3(vector_c);
 
     var vector_12 = Vector.subVec3(&vector_2, &vector_1);
     var vector_13 = Vector.subVec3(&vector_3, &vector_1);

@@ -2,6 +2,8 @@ const std = @import("std");
 const rl = @import("raylib");
 
 const Renderer = @import("renderer.zig");
+const RenderMode = Renderer.RenderMode;
+const Gui = @import("gui.zig");
 const Window = @import("window.zig");
 
 const AssetManager = @import("asset_manager.zig");
@@ -15,24 +17,28 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const screenWidth: u16 = 1280;
-    const screenHeight: u16 = 720;
+    const screenWidth: usize = 1280;
+    const screenHeight: usize = 720;
 
     var model_list = std.ArrayList(Model).init(allocator);
     var asset_manager = AssetManager.init(allocator);
     defer asset_manager.deinit();
 
-    const model = try asset_manager.loadModel("./assets/f22.obj", "./assets/f22.png");
+    const model = try asset_manager.loadModel("./assets/meshes/cube.obj", "./assets/textures/cube.png");
     try model_list.append(model);
 
     _ = try Window.init(screenWidth, screenHeight, "Test");
     defer Window.deinit();
 
     var renderer = try Renderer.init(allocator, screenWidth, screenHeight);
+
     var old_mouse = rl.getMousePosition();
 
+    var gui = Gui.init(screenWidth, screenHeight, 14.0);
+    defer gui.deinit();
+
     var camera: Camera = Camera.init(
-        .{ .x = 0.5, .y = 0.5, .z = -4 },
+        .{ .x = 0, .y = 0.1, .z = -0.5 },
         .{ .x = 0, .y = 0, .z = 1 },
         .{ .x = 0, .y = 0, .z = 0 },
     );
@@ -72,8 +78,25 @@ pub fn main() !void {
             movement.y += 5.0 * delta_time;
         }
 
+        if (rl.isKeyDown(rl.KeyboardKey.key_one)) {
+            renderer.setRenderMode(RenderMode.points);
+        }
+        if (rl.isKeyDown(rl.KeyboardKey.key_two)) {
+            renderer.setRenderMode(RenderMode.rasterized);
+        }
+        if (rl.isKeyDown(rl.KeyboardKey.key_three)) {
+            renderer.setRenderMode(RenderMode.wire_frame);
+        }
+
         camera.updateCamera(&movement, yaw, pitch);
+
+        renderer.beginDrawing();
+
         try renderer.render(&camera, &model_list);
+        gui.drawGui();
+        try gui.drawDiagnostics(&camera);
+
+        renderer.endDrawing();
         old_mouse = new_mouse;
     }
 }

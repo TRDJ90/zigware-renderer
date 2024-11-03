@@ -23,10 +23,10 @@ pub fn init(display: *Display, width: usize, height: usize) Rasterizer {
     };
 }
 
-pub fn drawRectangle(self: *Rasterizer, x_pos: i32, y_pos: i32, width: i32, height: i32, color: Color) void {
+fn drawRectangle(display: *Display, x_pos: usize, y_pos: usize, width: usize, height: usize, color: Color) void {
     for (0..height) |y| {
         for (0..width) |x| {
-            self.display.drawPixel(
+            display.drawPixel(
                 @intCast(y + y_pos),
                 @intCast(x + x_pos),
                 color,
@@ -35,8 +35,22 @@ pub fn drawRectangle(self: *Rasterizer, x_pos: i32, y_pos: i32, width: i32, heig
     }
 }
 
+fn drawPoint(display: *Display, x: usize, y: usize, color: Color) void {
+    display.drawPixel(x, y, color);
+    display.drawPixel(x - 1, y, color);
+    display.drawPixel(x + 1, y, color);
+
+    display.drawPixel(x, y - 1, color);
+    display.drawPixel(x - 1, y - 1, color);
+    display.drawPixel(x + 1, y - 1, color);
+
+    display.drawPixel(x, y + 1, color);
+    display.drawPixel(x - 1, y + 1, color);
+    display.drawPixel(x + 1, y + 1, color);
+}
+
 // DDA line drawing algorithm
-pub fn drawLine(display: *Display, x0: i32, y0: i32, x1: i32, y1: i32, color: Color) void {
+fn drawLine(display: *Display, x0: i32, y0: i32, x1: i32, y1: i32, color: Color) void {
     const delta_x: i32 = (x1 - x0);
     const delta_y: i32 = (y1 - y0);
 
@@ -84,6 +98,19 @@ pub fn drawTriangleLines(display: *Display, tri: *const Triangle, color: Color) 
     drawLine(display, x2, y2, x0, y0, color);
 }
 
+pub fn drawTrianglePoints(display: *Display, tri: *const Triangle, color: Color) void {
+    const x0: usize = @intFromFloat(tri.vertices[0].position.x);
+    const x1: usize = @intFromFloat(tri.vertices[1].position.x);
+    const x2: usize = @intFromFloat(tri.vertices[2].position.x);
+
+    const y0: usize = @intFromFloat(tri.vertices[0].position.y);
+    const y1: usize = @intFromFloat(tri.vertices[1].position.y);
+    const y2: usize = @intFromFloat(tri.vertices[2].position.y);
+
+    drawPoint(display, x0, y0, color);
+    drawPoint(display, x1, y1, color);
+    drawPoint(display, x2, y2, color);
+}
 pub fn drawTriangle(display: *Display, tri: *const Triangle, texture: *const Texture) void {
     const vertex_a: Vertex = tri.vertices[0];
     const vertex_b: Vertex = tri.vertices[1];
