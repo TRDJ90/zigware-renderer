@@ -13,7 +13,7 @@ const Triangle = @import("triangle.zig");
 const Clipping = @import("clipping.zig");
 const Mesh = @import("mesh.zig");
 const Model = @import("model.zig");
-// const RenderMode = @import("render_mode.zig");
+const RenderDiagnostics = @import("render_diagnostics.zig");
 
 const Vector = @import("vector.zig");
 const Matrix = @import("matrix.zig");
@@ -24,7 +24,7 @@ const Matrix4x4 = Matrix.Matrix4x4;
 
 pub const RenderMode = enum {
     rasterized,
-    wire_frame,
+    wireframe,
     points,
 };
 
@@ -35,6 +35,13 @@ rasterizer: Rasterizer,
 triangle_list: std.ArrayList(Triangle),
 proj_mat: Matrix4x4,
 render_mode: RenderMode,
+
+var culled_triangles: u32 = 0;
+var total_triangles: u32 = 0;
+var rendered_triangles: u32 = 0;
+var vertex_time_ms: i64 = 0.0;
+var pixel_time_ms: i64 = 0.0;
+var render_time_ns: i64 = 0.0;
 
 pub fn init(allocator: std.mem.Allocator, width: u16, height: u16) !Renderer {
     var display = try Display.init(allocator, width, height);
@@ -68,12 +75,11 @@ pub fn render(
     models: *std.ArrayList(Model),
 ) !void {
     const delta_time = rl.getFrameTime();
+    const start_time = std.time.milliTimestamp();
 
     for (models.items) |*model| {
         var mesh_ptr = &model.mesh;
         mesh_ptr.rotation.y += 0.5 * delta_time;
-        //mesh_ptr.rotation.x += 0.5 * delta_time;
-        //mesh_ptr.rotation.z += 0.5 * delta_time;
         mesh_ptr.translation.z = 3.0;
 
         const scale_mat: Matrix4x4 = Matrix.scaleMat4x4(mesh_ptr.scale.x, mesh_ptr.scale.y, mesh_ptr.scale.z);
@@ -117,6 +123,7 @@ pub fn render(
 
             // Do backface culling
             if (backFaceCulling(&triangle[0], &triangle[1], &triangle[2])) {
+                culled_triangles += 1;
                 continue;
             }
 
@@ -146,28 +153,42 @@ pub fn render(
 
             try self.triangle_list.append(Triangle.init(vertex_a, vertex_b, vertex_c));
         }
+
+        const end_vertex_time = std.time.milliTimestamp();
+        vertex_time_ms = end_vertex_time - start_time;
+
         // Render triangles
         for (self.triangle_list.items) |triangle| {
             switch (self.render_mode) {
                 RenderMode.rasterized => {
                     Rasterizer.drawTriangle(&self.display, &triangle, &models.items[0].texture);
                 },
-                RenderMode.wire_frame => {
+                RenderMode.wireframe => {
                     Rasterizer.drawTriangleLines(&self.display, &triangle, Color.black);
                 },
                 RenderMode.points => {
                     Rasterizer.drawTrianglePoints(&self.display, &triangle, Color.black);
                 },
             }
-            // Rasterizer.drawTriangle(&self.display, &triangle, &models.items[0].texture);
-            //Rasterizer.drawTriangleLines(&self.display, &triangle, Color.black);
         }
+        rendered_triangles += @intCast(self.triangle_list.items.len);
+        total_triangles += @intCast(mesh_ptr.vertices.items.len / 3);
+
+        const end_pixel_time = std.time.milliTimestamp();
+        pixel_time_ms = end_pixel_time - end_vertex_time;
     }
 
     self.display.present();
+    render_time_ns = std.time.milliTimestamp() - start_time;
 }
 
 pub fn beginDrawing(self: *Renderer) void {
+    culled_triangles = 0;
+    total_triangles = 0;
+    rendered_triangles = 0;
+    vertex_time_ms = 0.0;
+    pixel_time_ms = 0.0;
+
     rl.beginDrawing();
     rl.clearBackground(rl.Color.sky_blue);
     self.display.clearColorBuffer(Color.light_gray);
@@ -177,6 +198,18 @@ pub fn beginDrawing(self: *Renderer) void {
 pub fn endDrawing(self: *Renderer) void {
     rl.endDrawing();
     self.triangle_list.clearRetainingCapacity();
+}
+
+pub fn getRenderDiagnostics(self: *Renderer) RenderDiagnostics {
+    return RenderDiagnostics.init(
+        self.render_mode,
+        culled_triangles,
+        total_triangles,
+        rendered_triangles,
+        vertex_time_ms,
+        pixel_time_ms,
+        render_time_ns,
+    );
 }
 
 fn backFaceCulling(vector_a: *Vector4, vector_b: *Vector4, vector_c: *Vector4) bool {
